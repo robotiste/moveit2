@@ -41,11 +41,15 @@
 #include <moveit/robot_state/conversions.h>
 #include <moveit/utils/message_checks.h>
 #include <tf2_eigen/tf2_eigen.h>
-#include <ros/console.h>
+// #include <ros/console.h>
+
+
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit.ros.manipulation.place");
+
 
 namespace pick_place
 {
-PlacePlan::PlacePlan(const PickPlaceConstPtr& pick_place) : PickPlacePlanBase(pick_place, "place")
+PlacePlan::PlacePlan(const PickPlaceConstPtr& pick_place) : PickPlacePlanBase(node_, pick_place, "place")
 {
 }
 
@@ -53,7 +57,7 @@ namespace
 {
 struct OrderPlaceLocationQuality
 {
-  OrderPlaceLocationQuality(const std::vector<moveit_msgs::PlaceLocation>& places) : places_(places)
+  OrderPlaceLocationQuality(const std::vector<moveit_msgs::msg::PlaceLocation>& places) : places_(places)
   {
   }
 
@@ -62,11 +66,11 @@ struct OrderPlaceLocationQuality
     return places_[a].quality > places_[b].quality;
   }
 
-  const std::vector<moveit_msgs::PlaceLocation>& places_;
+  const std::vector<moveit_msgs::msg::PlaceLocation>& places_;
 };
 
-bool transformToEndEffectorGoal(const geometry_msgs::PoseStamped& goal_pose,
-                                const moveit::core::AttachedBody* attached_body, geometry_msgs::PoseStamped& place_pose)
+bool transformToEndEffectorGoal(const geometry_msgs::msg::PoseStamped& goal_pose,
+                                const moveit::core::AttachedBody* attached_body, geometry_msgs::msg::PoseStamped& place_pose)
 {
   const EigenSTL::vector_Isometry3d& fixed_transforms = attached_body->getFixedTransforms();
   if (fixed_transforms.empty())
@@ -81,14 +85,20 @@ bool transformToEndEffectorGoal(const geometry_msgs::PoseStamped& goal_pose,
 }
 }  // namespace
 
-bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene,
-                     const moveit_msgs::action::PlaceGoal& goal)
+bool PlacePlan::plan(const rclcpp::Node::SharedPtr& node,
+                     const planning_scene::PlanningSceneConstPtr& planning_scene,
+                     const moveit_msgs::action::Place_Goal& goal)
 {
+  node_ = node;
   double timeout = goal.allowed_planning_time;
-  ros::WallTime endtime = ros::WallTime::now() + ros::WallDuration(timeout);
+  rclcpp::Time endtime = node_->now() + rclcpp::Duration(timeout);
   std::string attached_object_name = goal.attached_object_name;
   const moveit::core::JointModelGroup* jmg = nullptr;
   const moveit::core::JointModelGroup* eef = nullptr;
+
+  // init rclcpp time default value
+  // last_update_time_ = node_->now();
+ 
 
   // if the group specified is actually an end-effector, we use it as such
   if (planning_scene->getRobotModel()->hasEndEffector(goal.group_name))
@@ -99,7 +109,7 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
       const std::string& eef_parent = eef->getEndEffectorParentGroup().first;
       if (eef_parent.empty())
       {
-        ROS_ERROR_STREAM_NAMED("manipulation", "No parent group to plan in was identified based on end-effector '"
+        RCLCPP_ERROR_STREAM(LOGGER, "No parent group to plan in was identified based on end-effector '"
                                                    << goal.group_name
                                                    << "'. Please define a parent group in the SRDF.");
         error_code_.val = moveit_msgs::msg::MoveItErrorCodes::INVALID_GROUP_NAME;
@@ -119,7 +129,7 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
       const std::vector<std::string>& eef_names = jmg->getAttachedEndEffectorNames();
       if (eef_names.empty())
       {
-        ROS_ERROR_STREAM_NAMED("manipulation",
+        RCLCPP_ERROR_STREAM(LOGGER,
                                "There are no end-effectors specified for group '" << goal.group_name << "'");
         error_code_.val = moveit_msgs::msg::MoveItErrorCodes::INVALID_GROUP_NAME;
         return false;
@@ -170,7 +180,7 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
             // if we previoulsy have set the eef it means we have more options we could use, so things are ambiguous
             if (eef)
             {
-              ROS_ERROR_STREAM_NAMED("manipulation", "There are multiple end-effectors for group '"
+              RCLCPP_ERROR_STREAM(LOGGER, "There are multiple end-effectors for group '"
                                                          << goal.group_name
                                                          << "' that are currently holding objects. It is ambiguous "
                                                             "which end-effector to use. Please specify it explicitly.");
@@ -201,7 +211,7 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
         {
           if (eef)
           {
-            ROS_ERROR_STREAM_NAMED("manipulation", "There are multiple end-effectors that include the link '"
+            RCLCPP_ERROR_STREAM(LOGGER, "There are multiple end-effectors that include the link '"
                                                        << link->getName() << "' which is where the body '"
                                                        << attached_object_name
                                                        << "' is attached. It is unclear which end-effector to use.");
@@ -217,7 +227,7 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
       const std::string& eef_parent = eef->getEndEffectorParentGroup().first;
       if (eef_parent.empty())
       {
-        ROS_ERROR_STREAM_NAMED("manipulation", "No parent group to plan in was identified based on end-effector '"
+        RCLCPP_ERROR_STREAM(LOGGER, "No parent group to plan in was identified based on end-effector '"
                                                    << goal.group_name
                                                    << "'. Please define a parent group in the SRDF.");
         error_code_.val = moveit_msgs::msg::MoveItErrorCodes::INVALID_GROUP_NAME;
@@ -246,7 +256,7 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
     loop_count++;
     if (attached_bodies.size() > 1)
     {
-      ROS_ERROR_NAMED("manipulation",
+      RCLCPP_ERROR(LOGGER,
                       "Multiple attached bodies for group '%s' but no explicit attached object to place was specified",
                       goal.group_name.c_str());
       error_code_.val = moveit_msgs::msg::MoveItErrorCodes::INVALID_OBJECT_NAME;
@@ -260,12 +270,12 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
       planning_scene->getCurrentState().getAttachedBody(attached_object_name);
   if (!attached_body)
   {
-    ROS_ERROR_NAMED("manipulation", "There is no object to detach for place action");
+    RCLCPP_ERROR(LOGGER, "There is no object to detach for place action");
     error_code_.val = moveit_msgs::msg::MoveItErrorCodes::INVALID_OBJECT_NAME;
     return false;
   }
 
-  ros::WallTime start_time = ros::WallTime::now();
+  rclcpp::Time start_time = node_->now();
 
   // construct common data for possible manipulation plans
   ManipulationPlanSharedDataPtr plan_data(new ManipulationPlanSharedData());
@@ -331,7 +341,7 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
   for (std::size_t i = 0; i < goal.place_locations.size(); ++i)
   {
     ManipulationPlanPtr p(new ManipulationPlan(const_plan_data));
-    const moveit_msgs::action::PlaceLocation& pl = goal.place_locations[place_locations_order[i]];
+    const moveit_msgs::msg::PlaceLocation& pl = goal.place_locations[place_locations_order[i]];
 
     if (goal.place_eef)
       p->goal_pose_ = pl.place_pose;
@@ -341,7 +351,7 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
         if (!transformToEndEffectorGoal(pl.place_pose, attached_body, p->goal_pose_))
     {
       p->goal_pose_ = pl.place_pose;
-      ROS_ERROR_NAMED("manipulation", "Unable to transform the desired pose of the object to the pose of the "
+      RCLCPP_ERROR(LOGGER, "Unable to transform the desired pose of the object to the pose of the "
                                       "end-effector");
     }
 
@@ -353,14 +363,14 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
       p->retreat_posture_ = attached_body->getDetachPosture();
     pipeline_.push(p);
   }
-  ROS_INFO_NAMED("manipulation", "Added %d place locations", (int)goal.place_locations.size());
+  RCLCPP_INFO(LOGGER, "Added %d place locations", (int)goal.place_locations.size());
 
   // wait till we're done
   waitForPipeline(endtime);
 
   pipeline_.stop();
 
-  last_plan_time_ = (ros::WallTime::now() - start_time).toSec();
+  last_plan_time_ = (node_->now() - start_time).seconds();
 
   if (!getSuccessfulManipulationPlans().empty())
     error_code_.val = moveit_msgs::msg::MoveItErrorCodes::SUCCESS;
@@ -373,31 +383,31 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
       error_code_.val = moveit_msgs::msg::MoveItErrorCodes::PLANNING_FAILED;
       if (!goal.place_locations.empty())
       {
-        ROS_WARN_NAMED("manipulation", "All supplied place locations failed. Retrying last location in verbose mode.");
+        RCLCPP_WARN(LOGGER, "All supplied place locations failed. Retrying last location in verbose mode.");
         // everything failed. we now start the pipeline again in verbose mode for one grasp
         initialize();
         pipeline_.setVerbose(true);
         pipeline_.start();
         pipeline_.reprocessLastFailure();
-        waitForPipeline(ros::WallTime::now() + ros::WallDuration(1.0));
+        waitForPipeline(node_->now() + rclcpp::Duration(1.0));
         pipeline_.stop();
         pipeline_.setVerbose(false);
       }
     }
   }
-  ROS_INFO_NAMED("manipulation", "Place planning completed after %lf seconds", last_plan_time_);
+  RCLCPP_INFO(LOGGER, "Place planning completed after %lf seconds", last_plan_time_);
 
   return error_code_.val == moveit_msgs::msg::MoveItErrorCodes::SUCCESS;
 }
 
 PlacePlanPtr PickPlace::planPlace(const planning_scene::PlanningSceneConstPtr& planning_scene,
-                                  const moveit_msgs::action::PlaceGoal& goal) const
+                                  const moveit_msgs::action::Place_Goal& goal) const
 {
   PlacePlanPtr p(new PlacePlan(shared_from_this()));
   if (moveit::core::isEmpty(goal.planning_options.planning_scene_diff))
-    p->plan(planning_scene, goal);
+    p->plan(node_, planning_scene, goal);
   else
-    p->plan(planning_scene->diff(goal.planning_options.planning_scene_diff), goal);
+    p->plan(node_, planning_scene->diff(goal.planning_options.planning_scene_diff), goal);
 
   if (display_computed_motion_plans_)
   {

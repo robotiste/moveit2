@@ -34,45 +34,50 @@
 
 /* Author: Ioan Sucan */
 
+#include <rclcpp/rclcpp.hpp>
 #include <moveit/pick_place/pick_place_params.h>
-#include <dynamic_reconfigure/server.h>
-#include <moveit_ros_manipulation/PickPlaceDynamicReconfigureConfig.h>
+
+// #include <dynamic_reconfigure/server.h>
+// #include <moveit_ros_manipulation/PickPlaceDynamicReconfigureConfig.h>
 
 namespace pick_place
 {
-namespace
-{
-using namespace moveit_ros_manipulation;
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_ros.pick_place");
 
-class DynamicReconfigureImpl
-{
-public:
-  DynamicReconfigureImpl() : dynamic_reconfigure_server_(ros::NodeHandle("~/pick_place"))
-  {
-    dynamic_reconfigure_server_.setCallback(
-        boost::bind(&DynamicReconfigureImpl::dynamicReconfigureCallback, this, _1, _2));
-  }
+// namespace
+// {
+// using namespace moveit_ros_manipulation;
 
-  const PickPlaceParams& getParams() const
-  {
-    return params_;
-  }
+// class DynamicReconfigureImpl
+// {
+// public:
+//   DynamicReconfigureImpl() : dynamic_reconfigure_server_(ros::NodeHandle("~/pick_place"))
+//   {
+//     dynamic_reconfigure_server_.setCallback(
+//         boost::bind(&DynamicReconfigureImpl::dynamicReconfigureCallback, this, _1, _2));
+//   }
 
-private:
-  PickPlaceParams params_;
+//   const PickPlaceParams& getParams() const
+//   {
+//     return params_;
+//   }
 
-  void dynamicReconfigureCallback(PickPlaceDynamicReconfigureConfig& config, uint32_t /*level*/)
-  {
-    params_.max_goal_count_ = config.max_attempted_states_per_pose;
-    params_.max_fail_ = config.max_consecutive_fail_attempts;
-    params_.max_step_ = config.cartesian_motion_step_size;
-    params_.jump_factor_ = config.jump_factor;
-  }
+// private:
+//   PickPlaceParams params_;
 
-  dynamic_reconfigure::Server<PickPlaceDynamicReconfigureConfig> dynamic_reconfigure_server_;
-};
-}  // namespace
+//   void dynamicReconfigureCallback(PickPlaceDynamicReconfigureConfig& config, uint32_t /*level*/)
+//   {
+//     params_.max_goal_count_ = config.max_attempted_states_per_pose;
+//     params_.max_fail_ = config.max_consecutive_fail_attempts;
+//     params_.max_step_ = config.cartesian_motion_step_size;
+//     params_.jump_factor_ = config.jump_factor;
+//   }
+
+//   dynamic_reconfigure::Server<PickPlaceDynamicReconfigureConfig> dynamic_reconfigure_server_;
+// };
+// }  // namespace
 }  // namespace pick_place
+
 
 pick_place::PickPlaceParams::PickPlaceParams() : max_goal_count_(5), max_fail_(3), max_step_(0.02), jump_factor_(2.0)
 {
@@ -80,6 +85,7 @@ pick_place::PickPlaceParams::PickPlaceParams() : max_goal_count_(5), max_fail_(3
 
 const pick_place::PickPlaceParams& pick_place::GetGlobalPickPlaceParams()
 {
-  static DynamicReconfigureImpl pick_place_params;
-  return pick_place_params.getParams();
+  // static DynamicReconfigureImpl pick_place_params;
+  // static pick_place_params;
+  // return pick_place_params.getParams();
 }

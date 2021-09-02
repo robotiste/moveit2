@@ -46,8 +46,8 @@
 #include <moveit_msgs/msg/grasp.hpp>
 // #include <moveit_msgs/msg/place_location.hpp>
 
-// #include <moveit_msgs/action/pickup.hpp>
-// #include <moveit_msgs/action/place.hpp>
+#include <moveit_msgs/action/pickup.hpp>
+#include <moveit_msgs/action/place.hpp>
 #include <moveit_msgs/action/move_group.hpp>
 #include <moveit_msgs/action/execute_trajectory.hpp>
 

@@ -45,6 +45,8 @@ namespace pick_place
 class PlanStage : public ManipulationStage
 {
 public:
+  PlanStage(const std::shared_ptr<rclcpp::Node>& node, const planning_scene::PlanningSceneConstPtr& scene,
+            const planning_pipeline::PlanningPipelinePtr& planning_pipeline);
   PlanStage(const planning_scene::PlanningSceneConstPtr& scene,
             const planning_pipeline::PlanningPipelinePtr& planning_pipeline);
 
@@ -53,6 +55,8 @@ public:
   bool evaluate(const ManipulationPlanPtr& plan) const override;
 
 private:
+  std::shared_ptr<rclcpp::Node> node_;
+
   planning_scene::PlanningSceneConstPtr planning_scene_;
   planning_pipeline::PlanningPipelinePtr planning_pipeline_;
 };

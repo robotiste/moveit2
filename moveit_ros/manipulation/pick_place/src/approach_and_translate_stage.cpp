@@ -39,7 +39,13 @@
 #include <moveit/trajectory_processing/trajectory_tools.h>
 #include <moveit/robot_state/cartesian_interpolator.h>
 #include <tf2_eigen/tf2_eigen.h>
-#include <ros/console.h>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/time.hpp>
+// #include <ros/console.h>
+
+
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit.ros.manipulation.approach_and_translate_stage");
+
 
 namespace pick_place
 {
@@ -58,7 +64,7 @@ namespace
 {
 bool isStateCollisionFree(const planning_scene::PlanningScene* planning_scene,
                           const collision_detection::AllowedCollisionMatrix* collision_matrix, bool verbose,
-                          const trajectory_msgs::JointTrajectory* grasp_posture, moveit::core::RobotState* state,
+                          const trajectory_msgs::msg::JointTrajectory* grasp_posture, moveit::core::RobotState* state,
                           const moveit::core::JointModelGroup* group, const double* joint_group_variable_values)
 {
   state->setJointGroupPositions(group, joint_group_variable_values);
@@ -122,7 +128,7 @@ bool samplePossibleGoalStates(const ManipulationPlanPtr& plan, const moveit::cor
 // This function is called during trajectory execution, after the gripper is closed, to attach the currently gripped
 // object
 bool executeAttachObject(const ManipulationPlanSharedDataConstPtr& shared_plan_data,
-                         const trajectory_msgs::JointTrajectory& detach_posture,
+                         const trajectory_msgs::msg::JointTrajectory& detach_posture,
                          const plan_execution::ExecutableMotionPlan* motion_plan)
 {
   if (shared_plan_data->diff_attached_object_.object.id.empty())
@@ -131,7 +137,7 @@ bool executeAttachObject(const ManipulationPlanSharedDataConstPtr& shared_plan_d
     return true;
   }
 
-  ROS_DEBUG_NAMED("manipulation", "Applying attached object diff to maintained planning scene (attaching/detaching "
+  RCLCPP_DEBUG(LOGGER, "Applying attached object diff to maintained planning scene (attaching/detaching "
                                   "object to end effector)");
   bool ok = false;
   {
@@ -166,13 +172,13 @@ void addGripperTrajectory(const ManipulationPlanPtr& plan,
     // If user has defined a time for it's gripper movement time, don't add the
     // DEFAULT_GRASP_POSTURE_COMPLETION_DURATION
     if (!plan->retreat_posture_.points.empty() &&
-        plan->retreat_posture_.points.back().time_from_start > ros::Duration(0.0))
+        rclcpp::Duration(plan->retreat_posture_.points.back().time_from_start) > rclcpp::Duration(0.0))
     {
       ee_closed_traj->addPrefixWayPoint(ee_closed_state, 0.0);
     }
     else
     {  // Do what was done before
-      ROS_INFO_STREAM("Adding default duration of " << PickPlace::DEFAULT_GRASP_POSTURE_COMPLETION_DURATION
+      RCLCPP_INFO_STREAM(LOGGER, "Adding default duration of " << PickPlace::DEFAULT_GRASP_POSTURE_COMPLETION_DURATION
                                                     << " seconds to the grasp closure time. Assign time_from_start to "
                                                     << "your trajectory to avoid this.");
       ee_closed_traj->addPrefixWayPoint(ee_closed_state, PickPlace::DEFAULT_GRASP_POSTURE_COMPLETION_DURATION);
@@ -187,7 +193,7 @@ void addGripperTrajectory(const ManipulationPlanPtr& plan,
   }
   else
   {
-    ROS_WARN_NAMED("manipulation", "No joint states of grasp postures have been defined in the pick place action.");
+    RCLCPP_WARN(LOGGER, "No joint states of grasp postures have been defined in the pick place action.");
   }
 }
 

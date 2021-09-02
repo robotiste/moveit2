@@ -7,7 +7,7 @@ set_target_properties(${MOVEIT_LIB_NAME} PROPERTIES VERSION "${${PROJECT_NAME}_V
 target_link_libraries(${MOVEIT_LIB_NAME}
     moveit_planning_pipeline
     moveit_planning_scene_monitor
-    moveit_trajectory_execution_manager
+    moveit_trajectory_execution_manager    
 )
 ament_target_dependencies(${MOVEIT_LIB_NAME}
   moveit_core

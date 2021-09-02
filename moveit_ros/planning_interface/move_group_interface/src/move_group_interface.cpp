@@ -58,9 +58,9 @@
 #include <moveit_msgs/srv/get_planner_params.hpp>
 #include <moveit_msgs/srv/set_planner_params.hpp>
 // TODO(JafarAbdi): Enable once moveit_ros_manipulation is ported
-// #include <moveit_msgs/msg/place_location.hpp>
-// #include <moveit_msgs/action/pickup.hpp>
-// #include <moveit_msgs/action/place.hpp>
+#include <moveit_msgs/msg/place_location.hpp>
+#include <moveit_msgs/action/pickup.hpp>
+#include <moveit_msgs/action/place.hpp>
 
 #include <std_msgs/msg/string.hpp>
 #include <geometry_msgs/msg/transform_stamped.h>

@@ -38,7 +38,11 @@
 #include <moveit/kinematic_constraints/utils.h>
 #include <tf2_eigen/tf2_eigen.h>
 #include <boost/bind.hpp>
-#include <ros/console.h>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/clock.hpp>
+// #include <ros/console.h>
+
+rclcpp::Clock steady_clock = rclcpp::Clock();
 
 pick_place::ReachableAndValidPoseFilter::ReachableAndValidPoseFilter(
     const planning_scene::PlanningSceneConstPtr& scene,
@@ -53,6 +57,8 @@ pick_place::ReachableAndValidPoseFilter::ReachableAndValidPoseFilter(
 
 namespace
 {
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit.ros.manipulation.reachable_valid_pose_filter");
+
 bool isStateCollisionFree(const planning_scene::PlanningScene* planning_scene,
                           const collision_detection::AllowedCollisionMatrix* collision_matrix, bool verbose,
                           const pick_place::ManipulationPlan* manipulation_plan, moveit::core::RobotState* state,
@@ -107,6 +113,7 @@ bool pick_place::ReachableAndValidPoseFilter::isEndEffectorFree(const Manipulati
 bool pick_place::ReachableAndValidPoseFilter::evaluate(const ManipulationPlanPtr& plan) const
 {
   // initialize with scene state
+
   moveit::core::RobotStatePtr token_state(new moveit::core::RobotState(planning_scene_->getCurrentState()));
   if (isEndEffectorFree(plan, *token_state))
   {
@@ -141,10 +148,10 @@ bool pick_place::ReachableAndValidPoseFilter::evaluate(const ManipulationPlanPtr
         return true;
       }
       else if (verbose_)
-        ROS_INFO_NAMED("manipulation", "Sampler failed to produce a state");
+        RCLCPP_INFO(LOGGER, "Sampler failed to produce a state");
     }
     else
-      ROS_ERROR_THROTTLE_NAMED(1, "manipulation", "No sampler was constructed");
+      RCLCPP_ERROR_THROTTLE(LOGGER, steady_clock, 1000, "No sampler was constructed");
   }
   plan->error_code_.val = moveit_msgs::msg::MoveItErrorCodes::GOAL_IN_COLLISION;
   return false;

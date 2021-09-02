@@ -36,6 +36,7 @@
 
 #pragma once
 
+#include <rclcpp/rclcpp.hpp>
 #include <moveit/macros/class_forward.h>
 #include <moveit/robot_state/robot_state.h>
 #include <moveit/constraint_samplers/constraint_sampler.h>
@@ -77,7 +78,7 @@ struct ManipulationPlanSharedData
 
   moveit_msgs::msg::AttachedCollisionObject diff_attached_object_;
 
-  ros::WallTime timeout_;
+  rclcpp::Time timeout_;
 };
 
 MOVEIT_STRUCT_FORWARD(ManipulationPlan);
@@ -111,13 +112,13 @@ struct ManipulationPlan
   moveit_msgs::msg::GripperTranslation retreat_;
 
   // the kinematic configuration of the end effector when approaching the goal (an open gripper)
-  trajectory_msgs::JointTrajectory approach_posture_;
+  trajectory_msgs::msg::JointTrajectory approach_posture_;
 
   // the kinematic configuration of the end effector when retreating from the goal (a closed gripper)
-  trajectory_msgs::JointTrajectory retreat_posture_;
+  trajectory_msgs::msg::JointTrajectory retreat_posture_;
 
   // -------------- computed data --------------------------
-  geometry_msgs::PoseStamped goal_pose_;
+  geometry_msgs::msg::PoseStamped goal_pose_;
   Eigen::Isometry3d transformed_goal_pose_;
 
   moveit_msgs::msg::Constraints goal_constraints_;

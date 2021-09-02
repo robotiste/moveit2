@@ -37,7 +37,32 @@
 #include <moveit/pick_place/pick_place.h>
 #include <moveit/robot_state/conversions.h>
 #include <moveit_msgs/msg/display_trajectory.hpp>
-#include <visualization_msgs/MarkerArray.h>
+#include <visualization_msgs/msg/marker_array.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/duration.hpp>
+#include <moveit/constraint_sampler_manager_loader/constraint_sampler_manager_loader.h>
+#include <boost/lexical_cast.hpp>
+
+#define BOOST_ALLOW_DEPRECATED_HEADERS
+#include <boost/regex.hpp>
+#include <boost/progress.hpp>
+#undef BOOST_ALLOW_DEPRECATED_HEADERS
+template <class Clock, class Duration>
+boost::posix_time::ptime toBoost(const std::chrono::time_point<Clock, Duration>& from)
+{
+  typedef std::chrono::nanoseconds duration_t;
+  typedef long rep_t;
+  rep_t d = std::chrono::duration_cast<duration_t>(from.time_since_epoch()).count();
+  rep_t sec = d / 1000000000;
+  rep_t nsec = d % 1000000000;
+  namespace pt = boost::posix_time;
+#ifdef BOOST_DATE_TIME_HAS_NANOSECONDS
+  return pt::from_time_t(sec) + pt::nanoseconds(nsec)
+#else
+  return pt::from_time_t(sec) + pt::microseconds(nsec / 1000);
+#endif
+}
+
 
 namespace pick_place
 {
@@ -48,8 +73,8 @@ const double PickPlace::DEFAULT_GRASP_POSTURE_COMPLETION_DURATION = 7.0;  // sec
 // functionality specific to pick-only is in pick.cpp;
 // functionality specific to place-only is in place.cpp;
 
-PickPlacePlanBase::PickPlacePlanBase(const PickPlaceConstPtr& pick_place, const std::string& name)
-  : pick_place_(pick_place), pipeline_(name, 4), last_plan_time_(0.0), done_(false)
+PickPlacePlanBase::PickPlacePlanBase(const rclcpp::Node::SharedPtr& node, const PickPlaceConstPtr& pick_place, const std::string& name)
+  : node_(node), pick_place_(pick_place), pipeline_(name, 4), last_plan_time_(0.0), done_(false)
 {
   pipeline_.setSolutionCallback(boost::bind(&PickPlacePlanBase::foundSolution, this));
   pipeline_.setEmptyQueueCallback(boost::bind(&PickPlacePlanBase::emptyQueue, this));
@@ -80,36 +105,38 @@ void PickPlacePlanBase::initialize()
   pushed_all_poses_ = false;
 }
 
-void PickPlacePlanBase::waitForPipeline(const ros::WallTime& endtime)
+void PickPlacePlanBase::waitForPipeline(const rclcpp::Time& endtime)
 {
   // wait till we're done
   boost::unique_lock<boost::mutex> lock(done_mutex_);
   pushed_all_poses_ = true;
-  while (!done_ && endtime > ros::WallTime::now())
-    done_condition_.timed_wait(lock, (endtime - ros::WallTime::now()).toBoost());
+  while (!done_ && endtime > node_->now())
+    done_condition_.timed_wait(lock, toBoost((endtime - node_->now()).to_chrono<std::chrono::system_clock::time_point>()));
 }
 
-PickPlace::PickPlace(const planning_pipeline::PlanningPipelinePtr& planning_pipeline)
-  : nh_("~"), planning_pipeline_(planning_pipeline), display_computed_motion_plans_(false), display_grasps_(false)
+PickPlace::PickPlace(const rclcpp::Node::SharedPtr& node, const planning_pipeline::PlanningPipelinePtr& planning_pipeline)
+  : node_(node), planning_pipeline_(planning_pipeline), display_computed_motion_plans_(false), display_grasps_(false)
 {
-  constraint_sampler_manager_loader_.reset(new constraint_sampler_manager_loader::ConstraintSamplerManagerLoader());
+  constraint_sampler_manager_loader_.reset(new constraint_sampler_manager_loader::ConstraintSamplerManagerLoader(node_));
+  // pnode_ = std::make_shared<rclcpp::Node>("_", node_->get_namespace(), rclcpp::NodeOptions().arguments(new_args));
+
 }
 
 void PickPlace::displayProcessedGrasps(bool flag)
 {
   if (display_grasps_ && !flag)
-    grasps_publisher_.shutdown();
+    grasps_publisher_.reset();
   else if (!display_grasps_ && flag)
-    grasps_publisher_ = nh_.advertise<visualization_msgs::MarkerArray>(DISPLAY_GRASP_TOPIC, 10, true);
+    grasps_publisher_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(DISPLAY_GRASP_TOPIC, 10);
   display_grasps_ = flag;
 }
 
 void PickPlace::displayComputedMotionPlans(bool flag)
 {
   if (display_computed_motion_plans_ && !flag)
-    display_path_publisher_.shutdown();
-  else if (!display_computed_motion_plans_ && flag)
-    display_path_publisher_ = nh_.advertise<moveit_msgs::msg::DisplayTrajectory>(DISPLAY_PATH_TOPIC, 10, true);
+    display_path_publisher_.reset();
+  else if (!plans_ && flag)
+    display_path_publisher_ = node_->create_publisher<moveit_msgs::msg::DisplayTrajectory>(DISPLAY_PATH_TOPIC, 10);
   display_computed_motion_plans_ = flag;
 }
 
@@ -130,7 +157,7 @@ void PickPlace::visualizePlan(const ManipulationPlanPtr& plan) const
     dtraj.trajectory.resize(dtraj.trajectory.size() + 1);
     traj.trajectory_->getRobotTrajectoryMsg(dtraj.trajectory.back());
   }
-  display_path_publisher_.publish(dtraj);
+  display_path_publisher_->publish(dtraj);
 }
 
 void PickPlace::visualizeGrasp(const ManipulationPlanPtr& plan) const
@@ -140,9 +167,9 @@ void PickPlace::visualizeGrasp(const ManipulationPlanPtr& plan) const
 
 namespace
 {
-std::vector<std_msgs::ColorRGBA> setupDefaultGraspColors()
+std::vector<std_msgs::msg::ColorRGBA> setupDefaultGraspColors()
 {
-  std::vector<std_msgs::ColorRGBA> result;
+  std::vector<std_msgs::msg::ColorRGBA> result;
   result.resize(6);
   result[0].r = 0.5f;
   result[0].g = 0.5f;
@@ -180,8 +207,8 @@ void PickPlace::visualizeGrasps(const std::vector<ManipulationPlanPtr>& plans) c
   moveit::core::RobotState state(getRobotModel());
   state.setToDefaultValues();
 
-  static std::vector<std_msgs::ColorRGBA> colors(setupDefaultGraspColors());
-  visualization_msgs::MarkerArray ma;
+  static std::vector<std_msgs::msg::ColorRGBA> colors(setupDefaultGraspColors());
+  visualization_msgs::msg::MarkerArray ma;
   for (const ManipulationPlanPtr& plan : plans)
   {
     const moveit::core::JointModelGroup* jmg = plan->shared_data_->end_effector_group_;
@@ -191,10 +218,10 @@ void PickPlace::visualizeGrasps(const std::vector<ManipulationPlanPtr>& plans) c
       state.updateStateWithLinkAt(plan->shared_data_->ik_link_, plan->transformed_goal_pose_);
       state.getRobotMarkers(ma, jmg->getLinkModelNames(), colors[type],
                             "moveit_grasps:stage_" + boost::lexical_cast<std::string>(plan->processing_stage_),
-                            ros::Duration(60));
+                            rclcpp::Duration(60));
     }
   }
 
-  grasps_publisher_.publish(ma);
+  grasps_publisher_->publish(ma);
 }
 }  // namespace pick_place

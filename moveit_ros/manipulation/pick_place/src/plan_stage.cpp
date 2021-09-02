@@ -37,13 +37,18 @@
 #include <moveit/pick_place/pick_place.h>
 #include <moveit/pick_place/plan_stage.h>
 #include <moveit/kinematic_constraints/utils.h>
-#include <ros/console.h>
+// #include <ros/console.h>
+#include <rclcpp/duration.hpp>
+
+
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit.ros.manipulation.plan_stage");
+
 
 namespace pick_place
 {
-PlanStage::PlanStage(const planning_scene::PlanningSceneConstPtr& scene,
+PlanStage::PlanStage(const rclcpp::Node::SharedPtr& node, const planning_scene::PlanningSceneConstPtr& scene,
                      const planning_pipeline::PlanningPipelinePtr& planning_pipeline)
-  : ManipulationStage("plan"), planning_scene_(scene), planning_pipeline_(planning_pipeline)
+  : node_(node), ManipulationStage("plan"), planning_scene_(scene), planning_pipeline_(planning_pipeline)
 {
 }
 
@@ -60,7 +65,7 @@ bool PlanStage::evaluate(const ManipulationPlanPtr& plan) const
   planning_interface::MotionPlanResponse res;
   req.group_name = plan->shared_data_->planning_group_->getName();
   req.num_planning_attempts = 1;
-  req.allowed_planning_time = (plan->shared_data_->timeout_ - ros::WallTime::now()).toSec();
+  req.allowed_planning_time = (plan->shared_data_->timeout_ - node_->now()).seconds();
   req.path_constraints = plan->shared_data_->path_constraints_;
   req.planner_id = plan->shared_data_->planner_id_;
   req.start_state.is_diff = true;
@@ -87,13 +92,13 @@ bool PlanStage::evaluate(const ManipulationPlanPtr& plan) const
         // If user has defined a time for it's gripper movement time, don't add the
         // DEFAULT_GRASP_POSTURE_COMPLETION_DURATION
         if (!plan->approach_posture_.points.empty() &&
-            plan->approach_posture_.points.back().time_from_start > ros::Duration(0.0))
+            rclcpp::Duration(plan->approach_posture_.points.back().time_from_start) > rclcpp::Duration(0.0))
         {
           pre_approach_traj->addPrefixWayPoint(pre_approach_state, 0.0);
         }
         else
         {  // Do what was done before
-          ROS_INFO_STREAM("Adding default duration of " << PickPlace::DEFAULT_GRASP_POSTURE_COMPLETION_DURATION
+          RCLCPP_INFO_STREAM(LOGGER, "Adding default duration of " << PickPlace::DEFAULT_GRASP_POSTURE_COMPLETION_DURATION
                                                         << " seconds to the grasp closure time. Assign time_from_start "
                                                         << "to your trajectory to avoid this.");
           pre_approach_traj->addPrefixWayPoint(pre_approach_state, PickPlace::DEFAULT_GRASP_POSTURE_COMPLETION_DURATION);
